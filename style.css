@@ -1,11 +1,89 @@
 body {
-  margin: 0;
-  background: #111;
-  overflow: hidden;
+    margin: 0;
+    background: #111; /* O fundo escuro que você definiu */
+    overflow: hidden;
+    color: white;
+    font-family: 'Segoe UI', sans-serif;
 }
 
 canvas {
-  display: block;
-  margin: auto;
-  background: #0a7a2f;
+    display: block;
+    margin: auto;
+    background: #0a7a2f; /* Verde escuro de estádio */
 }
+
+/* ================= ESTILO DO MENU ================= */
+#menu-overlay {
+    position: absolute; 
+    top: 0; 
+    left: 0; 
+    width: 100%; 
+    height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex; 
+    flex-direction: column; 
+    align-items: center; 
+    justify-content: center;
+    z-index: 10; 
+    transition: opacity 0.3s;
+}
+
+#menu-overlay.hidden { 
+    opacity: 0; 
+    pointer-events: none; 
+}
+
+.menu-box {
+    background: #2b323d; 
+    padding: 40px; 
+    border-radius: 10px;
+    text-align: center; 
+    border: 2px solid #3a414e; 
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    width: 400px;
+}
+
+/* Ajuste da sua logo */
+.game-logo {
+    max-width: 100%;
+    height: auto;
+    margin-bottom: 30px;
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* Botões e Tipografia */
+h1 { margin-bottom: 30px; font-size: 42px; letter-spacing: 2px; color: #7ca160; }
+#victory-title { font-size: 48px; margin-bottom: 10px; text-shadow: 0 0 20px rgba(255,255,255,0.2); }
+
+.btn-group { display: flex; gap: 20px; justify-content: center; margin-top: 20px; }
+
+button {
+    padding: 15px 25px; 
+    font-size: 16px; 
+    font-weight: bold; 
+    border: none;
+    border-radius: 5px; 
+    cursor: pointer; 
+    transition: transform 0.2s, filter 0.2s;
+}
+
+button:hover { transform: scale(1.05); filter: brightness(1.2); }
+
+.btn-red { background-color: #e56e56; color: white; width: 100%; }
+.btn-blue { background-color: #5689e5; color: white; width: 100%; }
+.btn-start { 
+    background-color: #7ca160; 
+    color: white; 
+    width: 100%; 
+    margin-bottom: 10px; 
+    font-size: 20px; 
+    padding: 20px;
+}
+
+/* Estilos extras de interface (Chat e Controles) */
+.controls { position: absolute; bottom: 15px; right: 20px; text-align: right; color: rgba(255, 255, 255, 0.6); font-size: 14px; pointer-events: none; background: rgba(0,0,0,0.3); padding: 8px; border-radius: 6px; }
+#chat-container { position: absolute; bottom: 20px; left: 20px; width: 450px; background: rgba(15, 25, 20, 0.65); border-radius: 5px; display: flex; flex-direction: column; }
+#chat-messages { max-height: 140px; overflow-y: auto; padding: 10px; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+#chat-input { background: rgba(0, 0, 0, 0.5); border: none; color: white; padding: 8px 10px; font-size: 13px; outline: none; }

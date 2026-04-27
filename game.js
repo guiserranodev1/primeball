@@ -381,6 +381,17 @@ function loop() {
     requestAnimationFrame(loop);
 }
 
+document.addEventListener("keydown", e => {
+    // Bloqueia o comportamento padrão do Espaço (clicar em botões focados)
+    if (e.key === " ") {
+        e.preventDefault();
+    }
+
+    keys[e.key.toLowerCase()] = true;
+    if (e.key.toLowerCase() === "p") botActive = !botActive;
+    if (e.key.toLowerCase() === "t") switchTeam(); 
+});
+
 // Garante que o jogo já comece com os times corretos
 setPlayerTeam(player.color);
 
