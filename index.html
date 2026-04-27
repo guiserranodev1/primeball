@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>PrimeBall - Menu & Avatar</title>
+    <style>
+        body { background-color: #7ca160; margin: 0; overflow: hidden; color: white; font-family: 'Segoe UI', sans-serif; }
+        canvas { display: block; }
+        
+        /* ================= ESTILO DO MENU ================= */
+        #menu-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 10; transition: opacity 0.3s;
+        }
+        #menu-overlay.hidden { opacity: 0; pointer-events: none; }
+
+        .menu-box {
+            background: #2b323d; padding: 40px; border-radius: 10px;
+            text-align: center; border: 2px solid #3a414e; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        h1 { margin-bottom: 30px; font-size: 42px; letter-spacing: 2px; color: #7ca160; }
+
+        .btn-group { display: flex; gap: 20px; justify-content: center; margin-top: 20px; }
+
+        button {
+            padding: 15px 25px; font-size: 16px; font-weight: bold; border: none;
+            border-radius: 5px; cursor: pointer; transition: transform 0.2s, filter 0.2s;
+        }
+        button:hover { transform: scale(1.05); filter: brightness(1.2); }
+
+        .btn-red { background-color: #e56e56; color: white; }
+        .btn-blue { background-color: #5689e5; color: white; }
+        .btn-start { background-color: #7ca160; color: white; width: 100%; margin-bottom: 10px; }
+
+        /* CONTROLES E CHAT */
+        .controls { position: absolute; bottom: 15px; right: 20px; text-align: right; color: rgba(255, 255, 255, 0.6); font-size: 14px; pointer-events: none; background: rgba(0,0,0,0.3); padding: 8px; border-radius: 6px; }
+        #chat-container { position: absolute; bottom: 20px; left: 20px; width: 450px; background: rgba(15, 25, 20, 0.65); border-radius: 5px; display: flex; flex-direction: column; transition: opacity 0.3s, transform 0.3s; }
+        #chat-container.hidden { opacity: 0; transform: translateY(20px); pointer-events: none; }
+        #chat-messages { max-height: 140px; overflow-y: auto; padding: 10px; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+        #chat-input { background: rgba(0, 0, 0, 0.5); border: none; color: white; padding: 8px 10px; font-size: 13px; outline: none; border-bottom-left-radius: 5px; border-bottom-right-radius: 5px; }
+        .msg-system { color: #ffd700; font-weight: bold; }
+        .msg-player { color: white; }
+        .msg-author { font-weight: bold; color: #ffcccc; margin-right: 5px; }
+    </style>
+</head>
+<body>
+
+    <div id="menu-overlay">
+        <div class="menu-box">
+            <h1>PRIMEBALL</h1>
+            <button class="btn-start" onclick="startGame()">ENTRAR EM CAMPO</button>
+            <div class="btn-group">
+                <button class="btn-red" onclick="joinTeam('#e56e56')">TIME VERMELHO</button>
+                <button class="btn-blue" onclick="joinTeam('#5689e5')">TIME AZUL</button>
+            </div>
+            <p style="margin-top: 20px; color: #888;">Use <strong>ESC</strong> para pausar e voltar ao menu</p>
+        </div>
+    </div>
+
+    <canvas id="game"></canvas>
+    
+    <div id="chat-container">
+        <div id="chat-messages"></div>
+        <input type="text" id="chat-input" placeholder="Digite /comandos para ajuda..." autocomplete="off">
+    </div>
+    
+    <div class="controls"><strong>ESC</strong>: Menu | <strong>ENTER</strong>: Chat | <strong>TAB</strong>: Ocultar Chat</div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+// ================= ESTADO DO JOGO =================
+let gameState = "MENU"; // MENU ou JOGANDO
+const menuOverlay = document.getElementById("menu-overlay");
+
+function startGame() {
+    gameState = "JOGANDO";
+    menuOverlay.classList.add("hidden");
+    writeToChat("Partida iniciada!");
+}
+
+function joinTeam(color) {
+    myPlayer.color = color;
+    startGame();
+}
+
+function toggleMenu() {
+    if (gameState === "JOGANDO") {
+        gameState = "MENU";
+        menuOverlay.classList.remove("hidden");
+    } else {
+        startGame();
+    }
+}
+
+function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// ================= DIMENSÕES E FÍSICA (SUAS CONFIGS) =================
+const WORLD_W = 2400, WORLD_H = 1200, FIELD_W = 1800, FIELD_H = 800;
+const CX = WORLD_W / 2, CY = WORLD_H / 2;
+const LEFT_LINE = CX - FIELD_W / 2, RIGHT_LINE = CX + FIELD_W / 2, TOP_LINE = CY - FIELD_H / 2, BOTTOM_LINE = CY + FIELD_H / 2;
+const GOAL_HEIGHT = 180, GOAL_DEPTH = 55, GOAL_TOP = CY - GOAL_HEIGHT / 2, GOAL_BOTTOM = CY + GOAL_HEIGHT / 2;
+const POSTS = [{x:LEFT_LINE,y:GOAL_TOP,r:8,color:"#ffcccc"},{x:LEFT_LINE,y:GOAL_BOTTOM,r:8,color:"#ffcccc"},{x:RIGHT_LINE,y:GOAL_TOP,r:8,color:"#ccccff"},{x:RIGHT_LINE,y:GOAL_BOTTOM,r:8,color:"#ccccff"}];
+
+const PLAYER_FRICTION = 0.90, BALL_FRICTION = 0.98, BASE_ACC = 0.20, MAX_SPEED = 4.0, KICK_POWER = 10, KICK_RADIUS = 17;
+
+let scoreLeft = 0, scoreRight = 0, botActive = true, gamePaused = true, gameTime = 0, lastTimestamp = 0, ZOOM = 0.75;
+const keys = {};
+
+// ================= CHAT E COMANDOS =================
+const chatContainer = document.getElementById("chat-container"), chatInput = document.getElementById("chat-input"), chatMessages = document.getElementById("chat-messages");
+
+function writeToChat(text, author = null) {
+    const msgDiv = document.createElement("div");
+    if (author) { msgDiv.className = "msg-player"; msgDiv.innerHTML = `<span class="msg-author">${author}:</span><span>${text}</span>`; }
+    else { msgDiv.className = "msg-system"; msgDiv.innerText = text; }
+    chatMessages.appendChild(msgDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function handleCommand(cmdStr) {
+    const args = cmdStr.split(" ");
+    const command = args[0].toLowerCase();
+    switch(command) {
+        case "/avatar":
+            if (args[1]) {
+                myPlayer.avatar = args[1].substring(0, 2);
+                writeToChat(`Avatar alterado para: ${myPlayer.avatar}`);
+            } else { writeToChat("Uso: /avatar [texto]"); }
+            break;
+        case "/clear": chatMessages.innerHTML = ""; break;
+        case "/reset": scoreLeft = 0; scoreRight = 0; gameTime = 0; resetPositions(); writeToChat("Partida reiniciada."); break;
+        case "/zoom": 
+            let z = parseFloat(args[1]);
+            if (!isNaN(z)) { ZOOM = Math.max(0.4, Math.min(1.8, z)); writeToChat(`Zoom: ${ZOOM}`); }
+            break;
+        case "/comandos":
+        case "/help":
+            writeToChat("--- COMANDOS ---");
+            writeToChat("/avatar [texto] | /zoom [valor] | /reset | /clear");
+            break;
+        default: writeToChat("Comando inválido. Use /comandos");
+    }
+}
+
+// ================= CLASSES =================
+class Player {
+    constructor(x, y, color, isBot = false) { 
+        this.x = x; this.y = y; this.startX = x; this.startY = y; this.vx = 0; this.vy = 0; this.r = 18; this.color = color; this.mass = 3; 
+        this.isKicking = false; this.isBot = isBot; this.momentum = 1; this.botSpeed = 0.45;
+        this.avatar = isBot ? "" : "1";
+    }
+    reset() { this.x = this.startX; this.y = this.startY; this.vx = 0; this.vy = 0; this.momentum = 1; this.isKicking = false; }
+    update() {
+        if (gameState !== "JOGANDO") return; // Só move se estiver jogando
+        if (!this.isBot) {
+            let isM = keys["w"] || keys["s"] || keys["a"] || keys["d"];
+            if (isM) { if (gamePaused) gamePaused = false; this.momentum += 0.03; if (this.momentum > 3.5) this.momentum = 3.5; } else this.momentum = 1;
+            let acc = BASE_ACC * this.momentum;
+            if (keys["w"]) this.vy -= acc; if (keys["s"]) this.vy += acc; if (keys["a"]) this.vx -= acc; if (keys["d"]) this.vx += acc;
+            this.isKicking = keys[" "];
+        } else if (botActive && !gamePaused) {
+            let dx = ball.x - this.x, dy = ball.y - this.y, d = Math.hypot(dx, dy);
+            if (d > 2) { this.vx += (dx / d) * this.botSpeed; this.vy += (dy / d) * this.botSpeed; }
+            this.isKicking = d < this.r + ball.r + KICK_RADIUS + 5;
+        }
+        this.vx *= PLAYER_FRICTION; this.vy *= PLAYER_FRICTION;
+        let m = this.isBot ? MAX_SPEED * 0.7 : MAX_SPEED; let s = Math.hypot(this.vx, this.vy);
+        if (s > m) { this.vx = (this.vx / s) * m; this.vy = (this.vy / s) * m; }
+        this.x += this.vx; this.y += this.vy;
+    }
+    draw(ctx) {
+        ctx.strokeStyle = this.isKicking ? "white" : "rgba(0,0,0,0.2)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(this.x, this.y, this.r + 4, 0, Math.PI*2); ctx.stroke();
+        ctx.lineWidth = 3; ctx.strokeStyle = "black"; ctx.fillStyle = this.color; ctx.beginPath(); ctx.arc(this.x, this.y, this.r, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = "white"; ctx.font = "bold 15px Arial"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText(this.avatar, this.x, this.y + 1);
+    }
+}
+
+const myPlayer = new Player(LEFT_LINE + 100, CY, "#e56e56", false);
+const allBots = [new Player(RIGHT_LINE - 100, CY, "#5689e5", true)];
+let players = [myPlayer, ...allBots], ball = { x: CX, y: CY, vx: 0, vy: 0, r: 12, mass: 0.7 }, camera = { x: CX, y: CY };
+
+// ================= INPUT =================
+document.addEventListener("keydown", e => {
+    if (e.key === "Escape") { toggleMenu(); return; } // ESC abre/fecha menu
+    if (e.key === "Tab") { e.preventDefault(); chatContainer.classList.toggle("hidden"); return; }
+    if (document.activeElement === chatInput) {
+        if (e.key === "Enter") {
+            const val = chatInput.value.trim();
+            if (val.startsWith("/")) handleCommand(val);
+            else if (val !== "") writeToChat(val, "Player 1");
+            chatInput.value = ""; chatInput.blur();
+        }
+        return;
+    }
+    if (e.key === "Enter") { e.preventDefault(); chatInput.focus(); return; }
+    keys[e.key.toLowerCase()] = true;
+    if (e.key.toLowerCase() === "p") { botActive = !botActive; players = botActive ? [myPlayer, ...allBots] : [myPlayer]; writeToChat("Bots: " + (botActive ? "ON" : "OFF")); }
+});
+document.addEventListener("keyup", e => { if (document.activeElement !== chatInput) keys[e.key.toLowerCase()] = false; });
+document.addEventListener("wheel", e => { ZOOM = Math.max(0.4, Math.min(1.8, ZOOM - e.deltaY * 0.001)); });
+
+// ================= FÍSICA =================
+function resolveCollision(p, b, isBall) {
+    const dx = b.x - p.x, dy = b.y - p.y, dist = Math.hypot(dx, dy), minDist = p.r + b.r;
+    if (dist < minDist && dist > 0) {
+        const nx = dx / dist, ny = dy / dist, ov = minDist - dist;
+        b.x += nx * ov * 0.5; b.y += ny * ov * 0.5; p.x -= nx * ov * 0.5; p.y -= ny * ov * 0.5;
+        const dvx = b.vx - p.vx, dvy = b.vy - p.vy, dot = dvx * nx + dvy * ny;
+        if (dot > 0) return;
+        const res = isBall ? 0.1 : 0.4, imp = -(1 + res) * dot / (1/p.mass + 1/b.mass);
+        p.vx -= (nx * imp) / p.mass; p.vy -= (ny * imp) / p.mass; b.vx += (nx * imp) / b.mass; b.vy += (ny * imp) / b.mass;
+        if (isBall && gamePaused) gamePaused = false;
+    }
+}
+
+function collideWithPost(e, post) {
+    const dx = e.x - post.x, dy = e.y - post.y, dist = Math.hypot(dx, dy), minDist = e.r + post.r;
+    if (dist < minDist) {
+        const nx = dx / dist, ny = dy / dist, ov = minDist - dist;
+        e.x += nx * ov; e.y += ny * ov;
+        const dot = e.vx * nx + e.vy * ny;
+        if (dot < 0) { const res = 0.5; e.vx -= (1 + res) * dot * nx; e.vy -= (1 + res) * dot * ny; }
+    }
+}
+
+function applyBoundaries(e, isBall) {
+    if (isBall) {
+        if (e.y < TOP_LINE + e.r) { e.y = TOP_LINE + e.r; e.vy *= -0.5; } if (e.y > BOTTOM_LINE - e.r) { e.y = BOTTOM_LINE - e.r; e.vy *= -0.5; }
+        if (e.x < LEFT_LINE + e.r) { if (e.y > GOAL_TOP + e.r && e.y < GOAL_BOTTOM - e.r) { if (e.x < LEFT_LINE - GOAL_DEPTH + e.r) { e.x = LEFT_LINE - GOAL_DEPTH + e.r; e.vx *= -0.5; } } else { e.x = LEFT_LINE + e.r; e.vx *= -0.5; } }
+        if (e.x > RIGHT_LINE - e.r) { if (e.y > GOAL_TOP + e.r && e.y < GOAL_BOTTOM - e.r) { if (e.x > RIGHT_LINE + GOAL_DEPTH - e.r) { e.x = RIGHT_LINE + GOAL_DEPTH - e.r; e.vx *= -0.5; } } else { e.x = RIGHT_LINE - e.r; e.vx *= -0.5; } }
+    } else {
+        if (e.y < e.r) e.y = e.r; if (e.y > WORLD_H - e.r) e.y = WORLD_H - e.r; if (e.x < e.r) e.x = e.r; if (e.x > WORLD_W - e.r) e.x = WORLD_W - e.r;
+    }
+}
+
+function resetPositions() { ball.x = CX; ball.y = CY; ball.vx = 0; ball.vy = 0; allBots.forEach(p => p.reset()); myPlayer.reset(); gamePaused = true; }
+
+function update(ts) {
+    if (gameState !== "JOGANDO") return; // FÍSICA TRAVADA NO MENU
+    if (!lastTimestamp) lastTimestamp = ts;
+    if (!gamePaused) { if (ts - lastTimestamp >= 1000) { gameTime++; lastTimestamp = ts; } } else lastTimestamp = ts;
+    
+    players.forEach(p => { 
+        p.update(); applyBoundaries(p, false); 
+        POSTS.forEach(post => collideWithPost(p, post));
+        resolveCollision(p, ball, true); 
+        if (p.isKicking && !gamePaused) { let dx = ball.x - p.x, dy = ball.y - p.y, dist = Math.hypot(dx, dy); if (dist < p.r + ball.r + KICK_RADIUS) { ball.vx = p.vx + (dx/dist) * KICK_POWER; ball.vy = p.vy + (dy/dist) * KICK_POWER; gamePaused = false; } } 
+    });
+    
+    ball.vx *= BALL_FRICTION; ball.vy *= BALL_FRICTION; ball.x += ball.vx; ball.y += ball.vy;
+    applyBoundaries(ball, true); POSTS.forEach(post => collideWithPost(ball, post));
+    
+    if (ball.x < LEFT_LINE - GOAL_DEPTH / 2 && ball.y > GOAL_TOP && ball.y < GOAL_BOTTOM) { scoreRight++; writeToChat("GOL DO AZUL!"); resetPositions(); }
+    if (ball.x > RIGHT_LINE + GOAL_DEPTH / 2 && ball.y > GOAL_TOP && ball.y < GOAL_BOTTOM) { scoreLeft++; writeToChat("GOL DO VERMELHO!"); resetPositions(); }
+    
+    let targetX = (myPlayer.x + ball.x) / 2, targetY = (myPlayer.y + ball.y) / 2, viewW = canvas.width / ZOOM, viewH = canvas.height / ZOOM;
+    targetX = Math.max(viewW/2, Math.min(WORLD_W - viewW/2, targetX)); targetY = Math.max(viewH/2, Math.min(WORLD_H - viewH/2, targetY));
+    camera.x += (targetX - camera.x) * 0.15; camera.y += (targetY - camera.y) * 0.15;
+}
+
+function draw() {
+    ctx.fillStyle = "#1e222a"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.save(); ctx.translate(canvas.width/2, canvas.height/2); ctx.scale(ZOOM, ZOOM); ctx.translate(-camera.x, -camera.y);
+    ctx.fillStyle = "#7ca160"; ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+    ctx.fillStyle = "rgba(255,255,255,0.05)"; for (let i = -WORLD_H; i < WORLD_W * 2; i += 120) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i - WORLD_H, WORLD_H); ctx.lineTo(i - WORLD_H + 60, WORLD_H); ctx.lineTo(i + 60, 0); ctx.fill(); }
+    ctx.strokeStyle = "rgba(255,255,255,0.6)"; ctx.lineWidth = 4; ctx.strokeRect(LEFT_LINE, TOP_LINE, FIELD_W, FIELD_H);
+    ctx.beginPath(); ctx.moveTo(CX, TOP_LINE); ctx.lineTo(CX, BOTTOM_LINE); ctx.stroke();
+    ctx.beginPath(); ctx.arc(CX, CY, 110, 0, Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(CX, CY, 7, 0, Math.PI*2); ctx.fillStyle = "white"; ctx.fill(); ctx.strokeStyle = "black"; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.strokeStyle = "black"; ctx.lineWidth = 3; const cr = 25;
+    ctx.beginPath(); ctx.moveTo(LEFT_LINE, GOAL_TOP); ctx.arcTo(LEFT_LINE-GOAL_DEPTH, GOAL_TOP, LEFT_LINE-GOAL_DEPTH, CY, cr); ctx.arcTo(LEFT_LINE-GOAL_DEPTH, GOAL_BOTTOM, LEFT_LINE, GOAL_BOTTOM, cr); ctx.lineTo(LEFT_LINE, GOAL_BOTTOM); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(RIGHT_LINE, GOAL_TOP); ctx.arcTo(RIGHT_LINE+GOAL_DEPTH, GOAL_TOP, RIGHT_LINE+GOAL_DEPTH, CY, cr); ctx.arcTo(RIGHT_LINE+GOAL_DEPTH, GOAL_BOTTOM, RIGHT_LINE, GOAL_BOTTOM, cr); ctx.lineTo(RIGHT_LINE, GOAL_BOTTOM); ctx.stroke();
+    POSTS.forEach(p => { ctx.fillStyle = p.color; ctx.strokeStyle = "black"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2); ctx.fill(); ctx.stroke(); });
+    players.forEach(p => p.draw(ctx)); ctx.lineWidth = 2; ctx.strokeStyle = "black"; ctx.fillStyle = "white"; ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+    ctx.restore();
+    
+    // HUD PLACAR (VISÍVEL NO MENU TAMBÉM)
+    const hW = 380, hH = 38, hX = canvas.width/2 - hW/2, hY = 15;
+    ctx.fillStyle = "#20252e"; ctx.beginPath(); ctx.roundRect(hX, hY, hW, hH, 6); ctx.fill();
+    ctx.fillStyle = "#e56e56"; ctx.beginPath(); ctx.roundRect(hX+10, hY+8, 22, 22, 4); ctx.fill();
+    ctx.fillStyle = "#5689e5"; ctx.beginPath(); ctx.roundRect(hX+90, hY+8, 22, 22, 4); ctx.fill();
+    ctx.fillStyle = "white"; ctx.font = "bold 20px Arial"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(`${scoreLeft} - ${scoreRight}`, hX+60, hY+hH/2+1);
+    ctx.fillStyle = "#3a414e"; ctx.fillRect(hX+220, hY, 2, hH);
+    ctx.fillStyle = "white"; ctx.font = "bold 18px Arial"; ctx.fillText(`${Math.floor(gameTime/60).toString().padStart(2,'0')}:${(gameTime%60).toString().padStart(2,'0')}`, hX+300, hY+hH/2+1);
+}
+
+function loop(ts) { update(ts); draw(); requestAnimationFrame(loop); }
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
