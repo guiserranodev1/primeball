@@ -5,12 +5,12 @@ canvas.width = 800;
 canvas.height = 400;
 
 // ================= CONFIGURAÇÕES DE FÍSICA =================
-const FRICTION = 0.96; // Menos atrito, desliza um pouco mais (estilo gelo do Haxball)
+const FRICTION = 0.96; 
 const BALL_FRICTION = 0.985;
 const PLAYER_ACC = 0.4;
 const MAX_SPEED = 3.5;
 const KICK_POWER = 5;
-const KICK_RADIUS = 5; // Distância extra para alcançar a bola com o chute
+const KICK_RADIUS = 5; 
 
 const GOAL_HEIGHT = 120;
 const GOAL_TOP = canvas.height / 2 - GOAL_HEIGHT / 2;
@@ -24,8 +24,8 @@ let scoreRight = 0;
 const player = {
     x: 200, y: 200,
     vx: 0, vy: 0,
-    r: 15, // Tamanho padrão do Haxball
-    color: "#e56e56", // Vermelho clássico
+    r: 15, 
+    color: "#e56e56", 
     mass: 2,
     isKicking: false
 };
@@ -34,7 +34,7 @@ const bot = {
     x: 600, y: 200,
     vx: 0, vy: 0,
     r: 15,
-    color: "#5689e5", // Azul clássico
+    color: "#5689e5", 
     speed: 0.3,
     mass: 2,
     isKicking: false
@@ -46,7 +46,7 @@ const ball = {
     vx: 0, vy: 0,
     r: 10,
     color: "white",
-    mass: 0.5 // Bola é mais leve, voa mais longe
+    mass: 0.5 
 };
 
 // ================= INPUT =================
@@ -77,7 +77,6 @@ function reset() {
     bot.vx = 0; bot.vy = 0;
 }
 
-// Resolução de colisão elástica com massa
 function resolveCollision(p, b) {
     const dx = b.x - p.x;
     const dy = b.y - p.y;
@@ -85,7 +84,6 @@ function resolveCollision(p, b) {
     const minDist = p.r + b.r;
 
     if (dist < minDist && dist > 0) {
-        // Empurra para fora da sobreposição (Impede que entrem um no outro)
         const nx = dx / dist;
         const ny = dy / dist;
         const overlap = minDist - dist;
@@ -95,15 +93,13 @@ function resolveCollision(p, b) {
         p.x -= nx * (overlap * 0.5);
         p.y -= ny * (overlap * 0.5);
 
-        // Troca de momento (Física elástica)
         const dvx = b.vx - p.vx;
         const dvy = b.vy - p.vy;
         const dotProduct = dvx * nx + dvy * ny;
 
-        // Se estão se afastando, não faz nada
         if (dotProduct > 0) return { nx, ny, dist };
 
-        const restitution = 0.5; // "Quique"
+        const restitution = 0.5; 
         const impulse = -(1 + restitution) * dotProduct / (1 / p.mass + 1 / b.mass);
 
         const impulseX = nx * impulse;
@@ -127,12 +123,11 @@ function update() {
     if (keys["a"]) player.vx -= PLAYER_ACC;
     if (keys["d"]) player.vx += PLAYER_ACC;
     
-    player.isKicking = keys[" "]; // Espaço para chutar
+    player.isKicking = keys[" "]; 
 
     player.vx *= FRICTION;
     player.vy *= FRICTION;
     
-    // Limita velocidade
     const playerSpeed = Math.hypot(player.vx, player.vy);
     if (playerSpeed > MAX_SPEED) {
         player.vx = (player.vx / playerSpeed) * MAX_SPEED;
@@ -142,16 +137,13 @@ function update() {
     player.x += player.vx;
     player.y += player.vy;
 
-    // Colisão Player x Bola
     resolveCollision(player, ball);
 
-    // Lógica do Chute Haxball
     if (player.isKicking) {
         const dx = ball.x - player.x;
         const dy = ball.y - player.y;
         const dist = Math.hypot(dx, dy);
         
-        // Se a bola está perto o suficiente do raio de chute
         if (dist < player.r + ball.r + KICK_RADIUS) {
             const nx = dx / dist;
             const ny = dy / dist;
@@ -160,24 +152,47 @@ function update() {
         }
     }
 
-    // ===== BOT =====
+    // ===== BOT INTELIGENTE (DRIBLADOR E ARTILHEIRO) =====
     if (botActive) {
-        let dx = ball.x - bot.x;
-        let dy = ball.y - bot.y;
-        let distToBall = Math.hypot(dx, dy);
+        const targetGoalX = 0; 
+        const targetGoalY = canvas.height / 2;
+        const myGoalX = canvas.width; 
 
-        // IA Simples: Anda na direção da bola
-        if (distToBall > 0) {
-            bot.vx += (dx / distToBall) * bot.speed;
-            bot.vy += (dy / distToBall) * bot.speed;
+        const lookAhead = 10; 
+        const futureBallX = ball.x + (ball.vx * lookAhead);
+        const futureBallY = ball.y + (ball.vy * lookAhead);
+
+        let targetX, targetY; 
+
+        if (ball.x > bot.x + 15) {
+            // DEFESA
+            targetX = myGoalX - 50; 
+            targetY = futureBallY;  
+        } else {
+            // POSICIONAMENTO ATRÁS DA BOLA
+            let toGoalX = targetGoalX - futureBallX;
+            let toGoalY = targetGoalY - futureBallY;
+            let distToGoal = Math.hypot(toGoalX, toGoalY);
+
+            let offset = bot.r + ball.r + 5; 
+            targetX = futureBallX - (toGoalX / distToGoal) * offset;
+            targetY = futureBallY - (toGoalY / distToGoal) * offset;
+        }
+
+        let dx = targetX - bot.x;
+        let dy = targetY - bot.y;
+        let distToTarget = Math.hypot(dx, dy);
+
+        if (distToTarget > 3) {
+            bot.vx += (dx / distToTarget) * bot.speed;
+            bot.vy += (dy / distToTarget) * bot.speed;
         }
 
         bot.vx *= FRICTION;
         bot.vy *= FRICTION;
 
-        // Limita velocidade do bot
         const botSpeed = Math.hypot(bot.vx, bot.vy);
-        if (botSpeed > MAX_SPEED * 0.8) {
+        if (botSpeed > MAX_SPEED * 0.8) { 
             bot.vx = (bot.vx / botSpeed) * (MAX_SPEED * 0.8);
             bot.vy = (bot.vy / botSpeed) * (MAX_SPEED * 0.8);
         }
@@ -187,11 +202,34 @@ function update() {
 
         resolveCollision(bot, ball);
 
-        // Bot chuta se estiver perto
-        bot.isKicking = distToBall < bot.r + ball.r + KICK_RADIUS + 5;
+        // --- NOVA LÓGICA DE DECISÃO DE CHUTE ---
+        let distToBall = Math.hypot(ball.x - bot.x, ball.y - bot.y);
+        let botToBallX = ball.x - bot.x;
+        let botToBallY = ball.y - bot.y;
+        let ballToGoalX = targetGoalX - ball.x;
+        let ballToGoalY = targetGoalY - ball.y;
+
+        let lenB2B = distToBall;
+        let lenB2G = Math.hypot(ballToGoalX, ballToGoalY);
+
+        // 1. Está mirando no gol?
+        let isFacingGoal = false;
+        if (lenB2B > 0 && lenB2G > 0) {
+            let dot = ((botToBallX / lenB2B) * (ballToGoalX / lenB2G)) + ((botToBallY / lenB2B) * (ballToGoalY / lenB2G));
+            isFacingGoal = dot > 0.95;
+        }
+        
+        // 2. ZONA DE CHUTE: O bot está do meio de campo pra frente?
+        // A largura do canvas é 800. O gol alvo é no x=0. Então consideramos ataque se x < 450.
+        let inShootingZone = bot.x < 450; 
+        
+        // Ele só vai acionar o anel branco se estiver PERTO, MIRANDO e NA ZONA DE ATAQUE!
+        bot.isKicking = distToBall < bot.r + ball.r + KICK_RADIUS + 10 && isFacingGoal && inShootingZone;
+        
+        // Aplica a força do chute
         if (bot.isKicking && distToBall < bot.r + ball.r + KICK_RADIUS) {
-            ball.vx += (dx / distToBall) * KICK_POWER;
-            ball.vy += (dy / distToBall) * KICK_POWER;
+            ball.vx += (botToBallX / lenB2B) * KICK_POWER;
+            ball.vy += (botToBallY / lenB2B) * KICK_POWER;
         }
     }
 
@@ -233,7 +271,6 @@ function update() {
 function drawPlayer(p) {
     ctx.lineWidth = 3;
     
-    // Borda preta externa (estilo Haxball)
     ctx.strokeStyle = "black";
     ctx.fillStyle = p.color;
     ctx.beginPath();
@@ -241,7 +278,6 @@ function drawPlayer(p) {
     ctx.fill();
     ctx.stroke();
 
-    // Anel de chute (Fica branco quando pressiona espaço)
     ctx.strokeStyle = p.isKicking ? "white" : "rgba(0,0,0,0.2)";
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -252,44 +288,36 @@ function drawPlayer(p) {
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // ===== CAMPO =====
-    ctx.fillStyle = "#718c5a"; // Verde mais suave, clássico
+    ctx.fillStyle = "#718c5a"; 
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     ctx.strokeStyle = "white";
     ctx.lineWidth = 3;
 
-    // Bordas e meio
     ctx.strokeRect(0, 0, canvas.width, canvas.height);
     ctx.beginPath();
     ctx.moveTo(canvas.width / 2, 0);
     ctx.lineTo(canvas.width / 2, canvas.height);
     ctx.stroke();
 
-    // Círculo central
     ctx.beginPath();
     ctx.arc(canvas.width / 2, canvas.height / 2, 60, 0, Math.PI * 2);
     ctx.stroke();
 
-    // ===== GOLEIRAS =====
-    // Goleira Esquerda
     ctx.strokeStyle = "black";
     ctx.beginPath();
     ctx.moveTo(0, GOAL_TOP);
     ctx.lineTo(0, GOAL_BOTTOM);
     ctx.stroke();
 
-    // Goleira Direita
     ctx.beginPath();
     ctx.moveTo(canvas.width, GOAL_TOP);
     ctx.lineTo(canvas.width, GOAL_BOTTOM);
     ctx.stroke();
 
-    // ===== ENTIDADES =====
     drawPlayer(player);
     if (botActive) drawPlayer(bot);
 
-    // BOLA
     ctx.lineWidth = 2;
     ctx.strokeStyle = "black";
     ctx.fillStyle = "white";
@@ -298,7 +326,6 @@ function draw() {
     ctx.fill();
     ctx.stroke();
 
-    // ===== PLACAR =====
     ctx.fillStyle = "white";
     ctx.font = "bold 30px Arial";
     ctx.textAlign = "center";
@@ -316,7 +343,6 @@ function loop() {
     requestAnimationFrame(loop);
 }
 
-// ================= SISTEMA DE COMANDOS MELHORADO =================
 function handleCommand(cmdStr) {
     const args = cmdStr.split(" ");
     const command = args[0].toLowerCase();
@@ -331,33 +357,33 @@ function handleCommand(cmdStr) {
             writeToChat("/p - Liga/Desliga os bots");
             writeToChat("--- --- --- --- --- ---");
             break;
-
         case "/clear":
-            chatMessages.innerHTML = "";
+            if (typeof chatMessages !== 'undefined') chatMessages.innerHTML = "";
             writeToChat("Chat limpo.");
             break;
-
         case "/reset":
             scoreLeft = 0;
             scoreRight = 0;
-            gameTime = 0; // Opcional: reseta o tempo também
-            resetPositions();
+            if (typeof gameTime !== 'undefined') gameTime = 0; 
+            reset(); 
             writeToChat("A partida e o placar foram reiniciados.");
             break;
-
         case "/zoom": 
             let val = parseFloat(args[1]);
             if (!isNaN(val) && val >= 0.3 && val <= 2) {
-                ZOOM = val;
+                if (typeof ZOOM !== 'undefined') ZOOM = val;
                 writeToChat(`Zoom ajustado para ${val}.`);
             } else {
                 writeToChat("Uso correto: /zoom [0.4 a 1.8]");
             }
             break;
-
         default:
             writeToChat("Comando desconhecido. Digite /comandos para ajuda.");
     }
+}
+
+function writeToChat(msg) {
+    console.log("[CHAT]:", msg);
 }
 
 loop();
