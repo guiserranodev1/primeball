@@ -16,6 +16,10 @@ const GOAL_HEIGHT = 120;
 const GOAL_TOP = canvas.height / 2 - GOAL_HEIGHT / 2;
 const GOAL_BOTTOM = canvas.height / 2 + GOAL_HEIGHT / 2;
 
+// CORES DOS TIMES
+const RED_TEAM = "#e56e56";
+const BLUE_TEAM = "#5689e5";
+
 // ================= SCORE =================
 let scoreLeft = 0;
 let scoreRight = 0;
@@ -25,7 +29,7 @@ const player = {
     x: 200, y: 200,
     vx: 0, vy: 0,
     r: 15, 
-    color: "#e56e56", 
+    color: RED_TEAM, // Mude aqui se quiser começar sempre de Azul
     mass: 2,
     isKicking: false
 };
@@ -34,7 +38,7 @@ const bot = {
     x: 600, y: 200,
     vx: 0, vy: 0,
     r: 15,
-    color: "#5689e5", 
+    color: BLUE_TEAM, 
     speed: 0.3,
     mass: 2,
     isKicking: false
@@ -49,12 +53,28 @@ const ball = {
     mass: 0.5 
 };
 
+// ================= SISTEMA DE TIMES =================
+function setPlayerTeam(newColor) {
+    player.color = newColor;
+    // O bot SEMPRE recebe a cor oposta à sua
+    bot.color = (newColor === RED_TEAM) ? BLUE_TEAM : RED_TEAM;
+    reset();
+}
+
+function switchTeam() {
+    // Troca para a cor que você não está usando no momento
+    const newColor = (player.color === RED_TEAM) ? BLUE_TEAM : RED_TEAM;
+    setPlayerTeam(newColor);
+    if (typeof writeToChat !== "undefined") writeToChat("Times trocados!");
+}
+
 // ================= INPUT =================
 const keys = {};
 
 document.addEventListener("keydown", e => {
     keys[e.key.toLowerCase()] = true;
     if (e.key.toLowerCase() === "p") botActive = !botActive;
+    if (e.key.toLowerCase() === "t") switchTeam(); // Aperte T para trocar de time
 });
 
 document.addEventListener("keyup", e => {
@@ -67,13 +87,17 @@ function clamp(v, min, max) {
 }
 
 function reset() {
-    ball.x = 400; ball.y = 200;
+    ball.x = canvas.width / 2; 
+    ball.y = canvas.height / 2;
     ball.vx = 0; ball.vy = 0;
 
-    player.x = 200; player.y = 200;
+    // Posicionamento dinâmico: Vermelho nasce na esquerda, Azul na direita
+    player.x = (player.color === RED_TEAM) ? 200 : canvas.width - 200;
+    player.y = canvas.height / 2;
     player.vx = 0; player.vy = 0;
 
-    bot.x = 600; bot.y = 200;
+    bot.x = (bot.color === RED_TEAM) ? 200 : canvas.width - 200;
+    bot.y = canvas.height / 2;
     bot.vx = 0; bot.vy = 0;
 }
 
@@ -152,11 +176,13 @@ function update() {
         }
     }
 
-    // ===== BOT INTELIGENTE (DRIBLADOR E ARTILHEIRO) =====
+    // ===== BOT INTELIGENTE (ADAPTÁVEL E DRIBLADOR) =====
     if (botActive) {
-        const targetGoalX = 0; 
+        // Descobre qual lado atacar baseado na cor que ele está usando
+        const isRedTeam = bot.color === RED_TEAM;
+        const targetGoalX = isRedTeam ? canvas.width : 0; 
         const targetGoalY = canvas.height / 2;
-        const myGoalX = canvas.width; 
+        const myGoalX = isRedTeam ? 0 : canvas.width; 
 
         const lookAhead = 10; 
         const futureBallX = ball.x + (ball.vx * lookAhead);
@@ -164,19 +190,35 @@ function update() {
 
         let targetX, targetY; 
 
-        if (ball.x > bot.x + 15) {
+        let ballIsBehindBot = isRedTeam ? (ball.x < bot.x - 15) : (ball.x > bot.x + 15);
+
+        if (ballIsBehindBot) {
             // DEFESA
-            targetX = myGoalX - 50; 
+            targetX = isRedTeam ? myGoalX + 50 : myGoalX - 50; 
             targetY = futureBallY;  
         } else {
-            // POSICIONAMENTO ATRÁS DA BOLA
+            // ATAQUE / POSICIONAMENTO E CONDUÇÃO
             let toGoalX = targetGoalX - futureBallX;
             let toGoalY = targetGoalY - futureBallY;
             let distToGoal = Math.hypot(toGoalX, toGoalY);
 
-            let offset = bot.r + ball.r + 5; 
-            targetX = futureBallX - (toGoalX / distToGoal) * offset;
-            targetY = futureBallY - (toGoalY / distToGoal) * offset;
+            // Ponto ideal atrás da bola
+            let idealX = futureBallX - (toGoalX / distToGoal) * (bot.r + ball.r + 5);
+            let idealY = futureBallY - (toGoalY / distToGoal) * (bot.r + ball.r + 5);
+
+            let dxIdeal = idealX - bot.x;
+            let dyIdeal = idealY - bot.y;
+            let distToIdeal = Math.hypot(dxIdeal, dyIdeal);
+
+            if (distToIdeal > 20) {
+                // Fora de posição: busca o ponto ideal atrás da bola
+                targetX = idealX;
+                targetY = idealY;
+            } else {
+                // Alinhado: engata a primeira marcha direto pro gol para conduzir a bola
+                targetX = targetGoalX;
+                targetY = targetGoalY;
+            }
         }
 
         let dx = targetX - bot.x;
@@ -202,7 +244,7 @@ function update() {
 
         resolveCollision(bot, ball);
 
-        // --- NOVA LÓGICA DE DECISÃO DE CHUTE ---
+        // --- LÓGICA DE DECISÃO DE CHUTE ---
         let distToBall = Math.hypot(ball.x - bot.x, ball.y - bot.y);
         let botToBallX = ball.x - bot.x;
         let botToBallY = ball.y - bot.y;
@@ -212,21 +254,17 @@ function update() {
         let lenB2B = distToBall;
         let lenB2G = Math.hypot(ballToGoalX, ballToGoalY);
 
-        // 1. Está mirando no gol?
         let isFacingGoal = false;
         if (lenB2B > 0 && lenB2G > 0) {
             let dot = ((botToBallX / lenB2B) * (ballToGoalX / lenB2G)) + ((botToBallY / lenB2B) * (ballToGoalY / lenB2G));
             isFacingGoal = dot > 0.95;
         }
         
-        // 2. ZONA DE CHUTE: O bot está do meio de campo pra frente?
-        // A largura do canvas é 800. O gol alvo é no x=0. Então consideramos ataque se x < 450.
-        let inShootingZone = bot.x < 450; 
+        // ZONA DE CHUTE (Metade do campo do inimigo)
+        let inShootingZone = isRedTeam ? (bot.x > canvas.width / 2) : (bot.x < canvas.width / 2); 
         
-        // Ele só vai acionar o anel branco se estiver PERTO, MIRANDO e NA ZONA DE ATAQUE!
         bot.isKicking = distToBall < bot.r + ball.r + KICK_RADIUS + 10 && isFacingGoal && inShootingZone;
         
-        // Aplica a força do chute
         if (bot.isKicking && distToBall < bot.r + ball.r + KICK_RADIUS) {
             ball.vx += (botToBallX / lenB2B) * KICK_POWER;
             ball.vy += (botToBallY / lenB2B) * KICK_POWER;
@@ -333,57 +371,17 @@ function draw() {
 
     ctx.font = "14px Arial";
     ctx.textAlign = "left";
-    ctx.fillText(`Bot: ${botActive ? "ON" : "OFF"} (P)`, 10, 20);
+    ctx.fillText(`Bot: ${botActive ? "ON" : "OFF"} (P) | Trocar Time: (T)`, 10, 20);
 }
 
-// ================= LOOP =================
+// ================= START & LOOP =================
 function loop() {
     update();
     draw();
     requestAnimationFrame(loop);
 }
 
-function handleCommand(cmdStr) {
-    const args = cmdStr.split(" ");
-    const command = args[0].toLowerCase();
-
-    switch(command) {
-        case "/comandos":
-        case "/help":
-            writeToChat("--- Lista de Comandos ---");
-            writeToChat("/clear - Limpa as mensagens do chat");
-            writeToChat("/reset - Reinicia o placar e as posições");
-            writeToChat("/zoom [valor] - Ajusta o zoom (ex: /zoom 0.8)");
-            writeToChat("/p - Liga/Desliga os bots");
-            writeToChat("--- --- --- --- --- ---");
-            break;
-        case "/clear":
-            if (typeof chatMessages !== 'undefined') chatMessages.innerHTML = "";
-            writeToChat("Chat limpo.");
-            break;
-        case "/reset":
-            scoreLeft = 0;
-            scoreRight = 0;
-            if (typeof gameTime !== 'undefined') gameTime = 0; 
-            reset(); 
-            writeToChat("A partida e o placar foram reiniciados.");
-            break;
-        case "/zoom": 
-            let val = parseFloat(args[1]);
-            if (!isNaN(val) && val >= 0.3 && val <= 2) {
-                if (typeof ZOOM !== 'undefined') ZOOM = val;
-                writeToChat(`Zoom ajustado para ${val}.`);
-            } else {
-                writeToChat("Uso correto: /zoom [0.4 a 1.8]");
-            }
-            break;
-        default:
-            writeToChat("Comando desconhecido. Digite /comandos para ajuda.");
-    }
-}
-
-function writeToChat(msg) {
-    console.log("[CHAT]:", msg);
-}
+// Garante que o jogo já comece com os times corretos
+setPlayerTeam(player.color);
 
 loop();

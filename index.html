@@ -83,8 +83,26 @@ function startGame() {
     writeToChat("Partida iniciada!");
 }
 
+// ================= NOVA LÓGICA DE TROCA DE TIME =================
 function joinTeam(color) {
+    const RED = "#e56e56";
+    const BLUE = "#5689e5";
+    
+    // Define a cor oposta para o bot
+    const oppColor = (color === RED) ? BLUE : RED;
+
+    // Atualiza o jogador principal (cor e posição inicial)
     myPlayer.color = color;
+    myPlayer.startX = (color === RED) ? LEFT_LINE + 100 : RIGHT_LINE - 100;
+
+    // Atualiza todos os bots para a cor e lado opostos
+    allBots.forEach(bot => {
+        bot.color = oppColor;
+        bot.startX = (oppColor === RED) ? LEFT_LINE + 100 : RIGHT_LINE - 100;
+    });
+
+    // Reseta as posições para aplicar as mudanças de lado
+    resetPositions();
     startGame();
 }
 
@@ -162,7 +180,7 @@ class Player {
     }
     
     update() {
-        if (gameState !== "JOGANDO") return; // Só move se estiver jogando
+        if (gameState !== "JOGANDO") return; 
         
         if (!this.isBot) {
             let isM = keys["w"] || keys["s"] || keys["a"] || keys["d"];
@@ -171,7 +189,7 @@ class Player {
             if (keys["w"]) this.vy -= acc; if (keys["s"]) this.vy += acc; if (keys["a"]) this.vx -= acc; if (keys["d"]) this.vx += acc;
             this.isKicking = keys[" "];
         } else if (botActive && !gamePaused) {
-            // ================== NOVA IA DO BOT (CONDUÇÃO) ==================
+            // ================== INTELIGÊNCIA DO BOT (Avançada) ==================
             const isRedTeam = this.color === "#e56e56";
             const targetGoalX = isRedTeam ? RIGHT_LINE : LEFT_LINE;
             const targetGoalY = CY;
@@ -186,16 +204,15 @@ class Player {
             let ballIsBehindBot = isRedTeam ? (ball.x < this.x - 15) : (ball.x > this.x + 15);
 
             if (ballIsBehindBot) {
-                // DEFESA
+                // DEFESA: Corre para trás da bola e protege o gol
                 targetX = isRedTeam ? myGoalX + 50 : myGoalX - 50; 
                 targetY = futureBallY;
             } else {
-                // ATAQUE / POSICIONAMENTO
+                // ATAQUE / CONDUÇÃO: Calcula o ponto atrás da bola
                 let toGoalX = targetGoalX - futureBallX;
                 let toGoalY = targetGoalY - futureBallY;
                 let distToGoal = Math.hypot(toGoalX, toGoalY);
 
-                // Calcula o ponto ideal atrás da bola para empurrá-la
                 let idealX = futureBallX - (toGoalX / distToGoal) * (this.r + ball.r + 15);
                 let idealY = futureBallY - (toGoalY / distToGoal) * (this.r + ball.r + 15);
 
@@ -203,19 +220,18 @@ class Player {
                 let dyIdeal = idealY - this.y;
                 let distToIdeal = Math.hypot(dxIdeal, dyIdeal);
 
-                // A MÁGICA ACONTECE AQUI:
                 if (distToIdeal > 20) {
-                    // Bot está fora de posição: contorna a bola até o ponto ideal
+                    // Bot contorna a bola se estiver mal posicionado
                     targetX = idealX;
                     targetY = idealY;
                 } else {
-                    // Bot está alinhado com a bola e o gol: engata a primeira marcha direto pro gol inimigo!
+                    // Engata a primeira marcha direto para o gol quando alinhado
                     targetX = targetGoalX;
                     targetY = targetGoalY;
                 }
             }
 
-            // Move o bot para o alvo
+            // Move o bot
             let dxTarget = targetX - this.x;
             let dyTarget = targetY - this.y;
             let distToTarget = Math.hypot(dxTarget, dyTarget);
@@ -242,11 +258,11 @@ class Player {
                 isFacingGoal = dot > 0.95; 
             }
 
-            // Zona de ataque: Chuta do meio campo pra frente
+            // Zona de ataque: só chuta do meio campo pra frente
             let inShootingZone = isRedTeam ? (this.x > CX - 100) : (this.x < CX + 100);
 
             this.isKicking = distToBall < this.r + ball.r + KICK_RADIUS + 10 && isFacingGoal && inShootingZone;
-            // ====================================================
+            // ====================================================================
         }
         
         this.vx *= PLAYER_FRICTION; this.vy *= PLAYER_FRICTION;
