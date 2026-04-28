@@ -26,7 +26,6 @@ O jogo está disponível oficialmente em:
 - **W, A, S, D:** Movimentação do jogador.
 - **Espaço:** Chutar a bola.
 - **Enter:** Abrir chat / Enviar mensagem.
-- **T:** Trocar de Time.
 - **P:** Ativar/Desativar o Bot automático.
 
 ### Multiplayer
