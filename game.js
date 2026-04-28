@@ -69,19 +69,26 @@ function setupNetwork() {
     });
 }
 
-// ================= SISTEMA DE CHAT =================
+// ================= SISTEMA DE CHAT (ESTILO CLÁSSICO ALINHADO) =================
 function writeToChat(text, author = "Sistema") {
     const chatMessages = document.getElementById("chat-messages");
     if (!chatMessages) return; // Evita erro se o HTML do chat não existir
 
     const msgDiv = document.createElement("div");
     msgDiv.style.marginBottom = "4px";
+    msgDiv.style.fontFamily = "'Segoe UI', sans-serif";
+    msgDiv.style.fontSize = "14px";
+    msgDiv.style.textShadow = "1px 1px 2px rgba(0,0,0,0.8)"; // Dá um destaque legal no texto para ler sobre o campo
 
-    if (author === "Sistema") {
-        msgDiv.innerHTML = `<span style="color: #ffd700; font-weight: bold;">[!] ${text}</span>`;
+    if (!author || author === "Sistema") {
+        msgDiv.style.color = "#ffd700"; // Amarelo
+        msgDiv.innerHTML = `<strong>[!]</strong> ${text}`;
+    } else if (author === "Você") {
+        msgDiv.style.color = "white";
+        msgDiv.innerHTML = `<strong style="color: #aaffaa;">Você:</strong> ${text}`; // Nome verde claro
     } else {
-        const corAutor = author === "Você" ? "#aaffaa" : "#ffaaaa";
-        msgDiv.innerHTML = `<span style="color: ${corAutor}; font-weight: bold;">${author}:</span> <span style="color: white;">${text}</span>`;
+        msgDiv.style.color = "white";
+        msgDiv.innerHTML = `<strong style="color: #5689e5;">Amigo:</strong> ${text}`; // Nome azul claro
     }
     
     chatMessages.appendChild(msgDiv);
@@ -495,11 +502,11 @@ function draw() {
     ctx.textAlign = "left";
     ctx.fillText(`Bot: ${botActive && !isMultiplayer ? "ON" : "OFF"} (P) | Trocar Time: (T)`, 10, 20);
 
-    // Etiqueta de versão para garantir que vocês estão na mesma atualização
+    // Etiqueta de versão para você ter certeza que atualizou
     ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
     ctx.font = "12px Arial";
     ctx.textAlign = "right";
-    ctx.fillText("v2.0", canvas.width - 10, canvas.height - 10);
+    ctx.fillText("v4.2 (Arquivos Separados)", canvas.width - 10, canvas.height - 10);
 }
 
 // ================= START & LOOP =================
@@ -523,11 +530,5 @@ function loop() {
 // 1. Configura a cor inicial
 setPlayerTeam(player.color);
 
-// 2. Dá a partida no motor UMA ÚNICA VEZ (CORRETO ✅)
-requestAnimationFrame(loop);
-
-// Garante que o jogo já comece com os times corretos
-setPlayerTeam(player.color);
-
-// Inicia o loop 
+// 2. Dá a partida no motor UMA ÚNICA VEZ
 requestAnimationFrame(loop);
