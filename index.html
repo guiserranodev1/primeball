@@ -108,7 +108,6 @@
     <div class="controls"><strong>ESC</strong>: Menu | <strong>ENTER</strong>: Chat | <strong>TAB</strong>: Ocultar Chat | <strong>SCROLL</strong>: Zoom</div>
 
 <script>
-// Mantive toda a sua lógica de script original aqui...
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
@@ -393,6 +392,9 @@ class Player {
     update() {
         if (gameState !== "JOGANDO") return; 
         
+        // CORREÇÃO: O seu PC não pode aplicar atrito e física no boneco do amigo, senão ele escorrega e duplica a velocidade!
+        if (isMultiplayer && this.isBot) return;
+
         if (!this.isBot) {
             let isM = keys["w"] || keys["s"] || keys["a"] || keys["d"];
             if (isM) { if (gamePaused) gamePaused = false; this.momentum += 0.03; if (this.momentum > 3.5) this.momentum = 3.5; } else this.momentum = 1;
@@ -631,9 +633,33 @@ function draw() {
     ctx.fillStyle = "white"; ctx.font = "bold 20px Arial"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(`${scoreLeft} - ${scoreRight}`, hX+60, hY+hH/2+1);
     ctx.fillStyle = "#3a414e"; ctx.fillRect(hX+220, hY, 2, hH);
     ctx.fillStyle = "white"; ctx.font = "bold 18px Arial"; ctx.fillText(`${Math.floor(gameTime/60).toString().padStart(2,'0')}:${(gameTime%60).toString().padStart(2,'0')}`, hX+300, hY+hH/2+1);
+
+    // CORREÇÃO: Etiqueta de versão na tela
+    ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
+    ctx.font = "12px Arial";
+    ctx.textAlign = "right";
+    ctx.fillText("v3.0", canvas.width - 20, canvas.height - 20);
 }
 
-function loop(ts) { update(ts); draw(); requestAnimationFrame(loop); }
+// CORREÇÃO: Loop travado em 60 FPS exatos (Remove loop duplicado)
+const FPS = 60;
+const fpsInterval = 1000 / FPS;
+let then = performance.now();
+
+function loop() {
+    requestAnimationFrame(loop);
+    
+    const now = performance.now();
+    const elapsed = now - then;
+    
+    if (elapsed > fpsInterval) {
+        then = now - (elapsed % fpsInterval);
+        update(now); // Passando o relógio do sistema para a sua função de gameTime
+        draw();
+    }
+}
+
+// Inicia o motor uma única vez
 requestAnimationFrame(loop);
 </script>
 </body>

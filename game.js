@@ -494,16 +494,40 @@ function draw() {
     ctx.font = "14px Arial";
     ctx.textAlign = "left";
     ctx.fillText(`Bot: ${botActive && !isMultiplayer ? "ON" : "OFF"} (P) | Trocar Time: (T)`, 10, 20);
+
+    // Etiqueta de versão para garantir que vocês estão na mesma atualização
+    ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
+    ctx.font = "12px Arial";
+    ctx.textAlign = "right";
+    ctx.fillText("v2.0", canvas.width - 10, canvas.height - 10);
 }
 
 // ================= START & LOOP =================
+const FPS = 60;
+const fpsInterval = 1000 / FPS; 
+let then = performance.now();
+
 function loop() {
-    update();
-    draw();
     requestAnimationFrame(loop);
+
+    const now = performance.now();
+    const elapsed = now - then;
+
+    if (elapsed > fpsInterval) {
+        then = now - (elapsed % fpsInterval);
+        update();
+        draw();
+    }
 }
+
+// 1. Configura a cor inicial
+setPlayerTeam(player.color);
+
+// 2. Dá a partida no motor UMA ÚNICA VEZ (CORRETO ✅)
+requestAnimationFrame(loop);
 
 // Garante que o jogo já comece com os times corretos
 setPlayerTeam(player.color);
 
-loop();
+// Inicia o loop 
+requestAnimationFrame(loop);
