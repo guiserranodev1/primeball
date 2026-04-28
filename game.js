@@ -4,6 +4,90 @@ const ctx = canvas.getContext("2d");
 canvas.width = 800;
 canvas.height = 400;
 
+// ================= REDE E MULTIPLAYER (PEERJS) =================
+const peer = new Peer();
+let conn;
+let isMultiplayer = false;
+let amIHost = false;
+
+// Exibe seu ID na tela (precisa ter um <strong id="meu-id-texto"> no HTML)
+peer.on('open', id => {
+    const idEl = document.getElementById('meu-id-texto');
+    if(idEl) idEl.innerText = id;
+});
+
+// Quando um amigo conecta em você
+peer.on('connection', connection => {
+    conn = connection;
+    amIHost = true;
+    setupNetwork();
+});
+
+// Função para o botão do HTML
+window.conectarAoAmigo = function() {
+    const id = document.getElementById('id-amigo').value;
+    if(!id) return alert("Insira um ID válido!");
+    conn = peer.connect(id);
+    amIHost = false;
+    setupNetwork();
+};
+
+function setupNetwork() {
+    conn.on('open', () => {
+        isMultiplayer = true;
+        botActive = false; // Desliga o bot automático
+        writeToChat("Amigo conectado! Partida Multiplayer iniciada.", "Sistema");
+        
+        const statusEl = document.getElementById('status-rede');
+        if(statusEl) {
+            statusEl.innerText = "CONECTADO!";
+            statusEl.style.color = "#7ca160";
+        }
+    });
+
+    conn.on('data', data => {
+        // RECEBER MENSAGEM DO CHAT
+        if (data.type === 'chat') {
+            writeToChat(data.msg, "Amigo");
+        }
+        // HOST RECEBENDO MOVIMENTO DO CLIENTE
+        else if (data.type === 'input') {
+            bot.x = data.x;
+            bot.y = data.y;
+            bot.isKicking = data.isKicking;
+        }
+        // CLIENTE RECEBENDO SINCRONIZAÇÃO DO HOST
+        else if (data.type === 'sync' && !amIHost) {
+            ball.x = data.bx;
+            ball.y = data.by;
+            bot.x = data.hx;
+            bot.y = data.hy;
+            bot.isKicking = data.hk;
+            scoreLeft = data.sl;
+            scoreRight = data.sr;
+        }
+    });
+}
+
+// ================= SISTEMA DE CHAT =================
+function writeToChat(text, author = "Sistema") {
+    const chatMessages = document.getElementById("chat-messages");
+    if (!chatMessages) return; // Evita erro se o HTML do chat não existir
+
+    const msgDiv = document.createElement("div");
+    msgDiv.style.marginBottom = "4px";
+
+    if (author === "Sistema") {
+        msgDiv.innerHTML = `<span style="color: #ffd700; font-weight: bold;">[!] ${text}</span>`;
+    } else {
+        const corAutor = author === "Você" ? "#aaffaa" : "#ffaaaa";
+        msgDiv.innerHTML = `<span style="color: ${corAutor}; font-weight: bold;">${author}:</span> <span style="color: white;">${text}</span>`;
+    }
+    
+    chatMessages.appendChild(msgDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight; // Desce o scroll automaticamente
+}
+
 // ================= CONFIGURAÇÕES DE FÍSICA =================
 const FRICTION = 0.96; 
 const BALL_FRICTION = 0.985;
@@ -29,7 +113,7 @@ const player = {
     x: 200, y: 200,
     vx: 0, vy: 0,
     r: 15, 
-    color: RED_TEAM, // Mude aqui se quiser começar sempre de Azul
+    color: RED_TEAM, 
     mass: 2,
     isKicking: false
 };
@@ -56,25 +140,53 @@ const ball = {
 // ================= SISTEMA DE TIMES =================
 function setPlayerTeam(newColor) {
     player.color = newColor;
-    // O bot SEMPRE recebe a cor oposta à sua
     bot.color = (newColor === RED_TEAM) ? BLUE_TEAM : RED_TEAM;
     reset();
 }
 
 function switchTeam() {
-    // Troca para a cor que você não está usando no momento
     const newColor = (player.color === RED_TEAM) ? BLUE_TEAM : RED_TEAM;
     setPlayerTeam(newColor);
-    if (typeof writeToChat !== "undefined") writeToChat("Times trocados!");
+    writeToChat("Times trocados!", "Sistema");
 }
 
-// ================= INPUT =================
+// ================= INPUT UNIFICADO (JOGO + CHAT) =================
 const keys = {};
 
 document.addEventListener("keydown", e => {
+    const chatInput = document.getElementById("chat-input");
+
+    // 1. Se o usuário estiver focado na caixa de texto do chat
+    if (document.activeElement === chatInput) {
+        if (e.key === "Enter") {
+            const msg = chatInput.value.trim();
+            if (msg !== "") {
+                writeToChat(msg, "Você"); // Mostra na sua tela
+                // Se estiver conectado, envia pro amigo
+                if (isMultiplayer && conn && conn.open) {
+                    conn.send({ type: 'chat', msg: msg });
+                }
+            }
+            chatInput.value = "";
+            chatInput.blur(); // Tira o foco do chat pra voltar a jogar
+        }
+        return; // Impede que o boneco ande enquanto digita "w", "a", etc.
+    }
+
+    // 2. Se apertar Enter fora do chat, foca na caixa de texto
+    if (e.key === "Enter") {
+        e.preventDefault();
+        if (chatInput) chatInput.focus();
+        return;
+    }
+
+    // Bloqueia o comportamento padrão do Espaço (rolar a tela)
+    if (e.key === " ") e.preventDefault();
+
+    // 3. Captura teclas normais de jogo
     keys[e.key.toLowerCase()] = true;
     if (e.key.toLowerCase() === "p") botActive = !botActive;
-    if (e.key.toLowerCase() === "t") switchTeam(); // Aperte T para trocar de time
+    if (e.key.toLowerCase() === "t") switchTeam(); 
 });
 
 document.addEventListener("keyup", e => {
@@ -91,7 +203,6 @@ function reset() {
     ball.y = canvas.height / 2;
     ball.vx = 0; ball.vy = 0;
 
-    // Posicionamento dinâmico: Vermelho nasce na esquerda, Azul na direita
     player.x = (player.color === RED_TEAM) ? 200 : canvas.width - 200;
     player.y = canvas.height / 2;
     player.vx = 0; player.vy = 0;
@@ -176,9 +287,8 @@ function update() {
         }
     }
 
-    // ===== BOT INTELIGENTE (ADAPTÁVEL E DRIBLADOR) =====
-    if (botActive) {
-        // Descobre qual lado atacar baseado na cor que ele está usando
+    // ===== BOT INTELIGENTE (DESATIVADO NO MULTIPLAYER) =====
+    if (botActive && !isMultiplayer) {
         const isRedTeam = bot.color === RED_TEAM;
         const targetGoalX = isRedTeam ? canvas.width : 0; 
         const targetGoalY = canvas.height / 2;
@@ -193,16 +303,13 @@ function update() {
         let ballIsBehindBot = isRedTeam ? (ball.x < bot.x - 15) : (ball.x > bot.x + 15);
 
         if (ballIsBehindBot) {
-            // DEFESA
             targetX = isRedTeam ? myGoalX + 50 : myGoalX - 50; 
             targetY = futureBallY;  
         } else {
-            // ATAQUE / POSICIONAMENTO E CONDUÇÃO
             let toGoalX = targetGoalX - futureBallX;
             let toGoalY = targetGoalY - futureBallY;
             let distToGoal = Math.hypot(toGoalX, toGoalY);
 
-            // Ponto ideal atrás da bola
             let idealX = futureBallX - (toGoalX / distToGoal) * (bot.r + ball.r + 5);
             let idealY = futureBallY - (toGoalY / distToGoal) * (bot.r + ball.r + 5);
 
@@ -211,11 +318,9 @@ function update() {
             let distToIdeal = Math.hypot(dxIdeal, dyIdeal);
 
             if (distToIdeal > 20) {
-                // Fora de posição: busca o ponto ideal atrás da bola
                 targetX = idealX;
                 targetY = idealY;
             } else {
-                // Alinhado: engata a primeira marcha direto pro gol para conduzir a bola
                 targetX = targetGoalX;
                 targetY = targetGoalY;
             }
@@ -244,7 +349,6 @@ function update() {
 
         resolveCollision(bot, ball);
 
-        // --- LÓGICA DE DECISÃO DE CHUTE ---
         let distToBall = Math.hypot(ball.x - bot.x, ball.y - bot.y);
         let botToBallX = ball.x - bot.x;
         let botToBallY = ball.y - bot.y;
@@ -260,7 +364,6 @@ function update() {
             isFacingGoal = dot > 0.95;
         }
         
-        // ZONA DE CHUTE (Metade do campo do inimigo)
         let inShootingZone = isRedTeam ? (bot.x > canvas.width / 2) : (bot.x < canvas.width / 2); 
         
         bot.isKicking = distToBall < bot.r + ball.r + KICK_RADIUS + 10 && isFacingGoal && inShootingZone;
@@ -303,6 +406,25 @@ function update() {
         p.x = clamp(p.x, p.r, canvas.width - p.r);
         p.y = clamp(p.y, p.r, canvas.height - p.r);
     });
+
+    // ===== ENVIO DE DADOS PELA REDE =====
+    if (isMultiplayer && conn && conn.open) {
+        if (amIHost) {
+            // O Host manda o estado global do jogo
+            conn.send({ 
+                type: 'sync', 
+                bx: ball.x, by: ball.y, 
+                hx: player.x, hy: player.y, hk: player.isKicking, 
+                sl: scoreLeft, sr: scoreRight 
+            });
+        } else {
+            // O Cliente manda só as suas próprias ações
+            conn.send({ 
+                type: 'input', 
+                x: player.x, y: player.y, isKicking: player.isKicking 
+            });
+        }
+    }
 }
 
 // ================= DRAW =================
@@ -354,7 +476,7 @@ function draw() {
     ctx.stroke();
 
     drawPlayer(player);
-    if (botActive) drawPlayer(bot);
+    if (botActive || isMultiplayer) drawPlayer(bot); // Desenha o "bot" que agora é seu amigo!
 
     ctx.lineWidth = 2;
     ctx.strokeStyle = "black";
@@ -371,7 +493,7 @@ function draw() {
 
     ctx.font = "14px Arial";
     ctx.textAlign = "left";
-    ctx.fillText(`Bot: ${botActive ? "ON" : "OFF"} (P) | Trocar Time: (T)`, 10, 20);
+    ctx.fillText(`Bot: ${botActive && !isMultiplayer ? "ON" : "OFF"} (P) | Trocar Time: (T)`, 10, 20);
 }
 
 // ================= START & LOOP =================
@@ -380,17 +502,6 @@ function loop() {
     draw();
     requestAnimationFrame(loop);
 }
-
-document.addEventListener("keydown", e => {
-    // Bloqueia o comportamento padrão do Espaço (clicar em botões focados)
-    if (e.key === " ") {
-        e.preventDefault();
-    }
-
-    keys[e.key.toLowerCase()] = true;
-    if (e.key.toLowerCase() === "p") botActive = !botActive;
-    if (e.key.toLowerCase() === "t") switchTeam(); 
-});
 
 // Garante que o jogo já comece com os times corretos
 setPlayerTeam(player.color);

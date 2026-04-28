@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <title>PrimeBall</title>
     <link rel="icon" type="image/png" href="game-logo.png">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         body { background-color: #7ca160; margin: 0; overflow: hidden; color: white; font-family: 'Segoe UI', sans-serif; }
         canvas { display: block; }
@@ -48,6 +50,14 @@
         .btn-blue { background-color: #5689e5; color: white; width: 100%; }
         .btn-start { background-color: #7ca160; color: white; width: 100%; margin-bottom: 10px; font-size: 20px; padding: 20px;}
 
+        /* ESTILO DA CONEXÃO MULTIPLAYER */
+        .net-box {
+            background: rgba(0,0,0,0.4); padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #444;
+        }
+        .net-input {
+            width: 100%; padding: 10px; margin-top: 10px; border-radius: 5px; border: none; background: #1e222a; color: white; text-align: center; box-sizing: border-box;
+        }
+
         /* CONTROLES E CHAT */
         .controls { position: absolute; bottom: 15px; right: 20px; text-align: right; color: rgba(255, 255, 255, 0.6); font-size: 14px; pointer-events: none; background: rgba(0,0,0,0.3); padding: 8px; border-radius: 6px; }
         #chat-container { position: absolute; bottom: 20px; left: 20px; width: 450px; background: rgba(15, 25, 20, 0.65); border-radius: 5px; display: flex; flex-direction: column; transition: opacity 0.3s, transform 0.3s; }
@@ -65,6 +75,13 @@
         <div id="main-menu" class="menu-box">
             <img src="game-logo.png" alt="PrimeBall Logo" class="game-logo">
             
+            <div class="net-box">
+                <p style="font-size: 12px; margin: 0; color: #7ca160;">Seu ID: <strong id="meu-id-texto">Carregando...</strong></p>
+                <input type="text" id="id-amigo" class="net-input" placeholder="Cole o ID do seu amigo">
+                <button class="btn-blue" style="width: 100%; margin-top: 10px; padding: 10px;" onclick="conectarAoAmigo()">CONECTAR AO AMIGO</button>
+                <p id="status-rede" style="font-size: 11px; margin-top: 5px; color: #888;">Modo Offline</p>
+            </div>
+
             <button class="btn-start" onclick="startGame()">ENTRAR EM CAMPO</button>
             <div class="btn-group">
                 <button class="btn-red" onclick="joinTeam('#e56e56')">TIME VERMELHO</button>
@@ -94,6 +111,54 @@
 // Mantive toda a sua lógica de script original aqui...
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
+
+// ================= LOGICA MULTIPLAYER (PEERJS) =================
+const peer = new Peer();
+let conn;
+let isMultiplayer = false;
+let amIHost = false;
+
+peer.on('open', (id) => { document.getElementById('meu-id-texto').innerText = id; });
+
+peer.on('connection', (connection) => {
+    conn = connection;
+    amIHost = true;
+    setupNetEvents();
+});
+
+function conectarAoAmigo() {
+    const id = document.getElementById('id-amigo').value;
+    if(!id) return alert("Insira um ID!");
+    conn = peer.connect(id);
+    amIHost = false;
+    setupNetEvents();
+}
+
+function setupNetEvents() {
+    conn.on('open', () => {
+        isMultiplayer = true;
+        botActive = false; // Desativa bots ao conectar
+        document.getElementById('status-rede').innerText = "CONECTADO!";
+        document.getElementById('status-rede').style.color = "#7ca160";
+        writeToChat("Amigo conectado! Multiplayer ativo.");
+    });
+
+    conn.on('data', (data) => {
+        if (data.type === 'input') {
+            allBots[0].x = data.x;
+            allBots[0].y = data.y;
+            allBots[0].isKicking = data.isKicking;
+            allBots[0].avatar = "P2";
+        }
+        if (!amIHost && data.type === 'sync') {
+            ball.x = data.bx; ball.y = data.by;
+            allBots[0].x = data.hx; allBots[0].y = data.hy;
+            allBots[0].isKicking = data.hk;
+            scoreLeft = data.sl; scoreRight = data.sr;
+            gameTime = data.gt;
+        }
+    });
+}
 
 // ================= ESTADO DO JOGO E REGRAS =================
 const MAX_GOALS = 3; 
@@ -199,14 +264,12 @@ function playSound(type) {
 function startGame() {
     if (audioCtx.state === 'suspended') audioCtx.resume(); 
     
-    // Tira o foco de qualquer botão ou input ativo
     if (document.activeElement) {
         document.activeElement.blur();
     }
 
     gameState = "JOGANDO";
     menuOverlay.classList.add("hidden");
-    // ... restante do código
 }
 
 function endGame(winnerName, winnerColor) {
@@ -337,6 +400,9 @@ class Player {
             if (keys["w"]) this.vy -= acc; if (keys["s"]) this.vy += acc; if (keys["a"]) this.vx -= acc; if (keys["d"]) this.vx += acc;
             this.isKicking = keys[" "];
         } else if (botActive && !gamePaused) {
+            // Lógica de bot desativada se multiplayer estiver on
+            if(isMultiplayer) return;
+
             const isRedTeam = this.color === "#e56e56";
             const targetGoalX = isRedTeam ? RIGHT_LINE : LEFT_LINE;
             const targetGoalY = CY;
@@ -527,6 +593,15 @@ function update(ts) {
     let targetX = (myPlayer.x + ball.x) / 2, targetY = (myPlayer.y + ball.y) / 2, viewW = canvas.width / ZOOM, viewH = canvas.height / ZOOM;
     targetX = Math.max(viewW/2, Math.min(WORLD_W - viewW/2, targetX)); targetY = Math.max(viewH/2, Math.min(WORLD_H - viewH/2, targetY));
     camera.x += (targetX - camera.x) * 0.15; camera.y += (targetY - camera.y) * 0.15;
+
+    // ENVIO DE DADOS MULTIPLAYER
+    if (isMultiplayer && conn && conn.open) {
+        if (amIHost) {
+            conn.send({ type: 'sync', bx: ball.x, by: ball.y, hx: myPlayer.x, hy: myPlayer.y, hk: myPlayer.isKicking, sl: scoreLeft, sr: scoreRight, gt: gameTime });
+        } else {
+            conn.send({ type: 'input', x: myPlayer.x, y: myPlayer.y, isKicking: myPlayer.isKicking });
+        }
+    }
 }
 
 function draw() {
